@@ -551,33 +551,33 @@ async def health_check():
 # Main Entry Point
 # ============================================================================
 
-if __name__ == "__main__":
-    local_ip = get_local_ip()
+# if __name__ == "__main__":
+#     local_ip = get_local_ip()
     
-    print("\n" + "=" * 60)
-    print("🚀 FAST P2P FILE TRANSFER SERVER")
-    print("=" * 60)
-    print(f"\n📡 Local IP Address: {local_ip}")
-    print(f"\n🌐 Server URLs:")
-    print(f"   • API:       http://{local_ip}:8000")
-    print(f"   • WebSocket: ws://{local_ip}:8000/ws/{{room_id}}/{{role}}")
-    print(f"\n📱 Frontend URL (after starting frontend):")
-    print(f"   • http://{local_ip}:5173")
-    print(f"\n💡 How to use:")
-    print(f"   1. Start frontend: cd frontend && npm run dev")
-    print(f"   2. Open http://{local_ip}:5173 on this PC")
-    print(f"   3. Open same URL on other PC (same WiFi)")
-    print(f"   4. Create room on sender, join on receiver")
-    print(f"   5. Select file and transfer!")
-    print("\n" + "=" * 60)
-    print("📊 Server logs:\n")
+#     print("\n" + "=" * 60)
+#     print("🚀 FAST P2P FILE TRANSFER SERVER")
+#     print("=" * 60)
+#     print(f"\n📡 Local IP Address: {local_ip}")
+#     print(f"\n🌐 Server URLs:")
+#     print(f"   • API:       http://{local_ip}:8000")
+#     print(f"   • WebSocket: ws://{local_ip}:8000/ws/{{room_id}}/{{role}}")
+#     print(f"\n📱 Frontend URL (after starting frontend):")
+#     print(f"   • http://{local_ip}:5173")
+#     print(f"\n💡 How to use:")
+#     print(f"   1. Start frontend: cd frontend && npm run dev")
+#     print(f"   2. Open http://{local_ip}:5173 on this PC")
+#     print(f"   3. Open same URL on other PC (same WiFi)")
+#     print(f"   4. Create room on sender, join on receiver")
+#     print(f"   5. Select file and transfer!")
+#     print("\n" + "=" * 60)
+#     print("📊 Server logs:\n")
     
-    uvicorn.run(
-        app,
-        host="127.0.0.1",
-        port=8000,
-        log_level="info",
-        ws_ping_interval=30,
-        ws_ping_timeout=30,
-        ws_max_size=16 * 1024 * 1024,  # 16MB max WebSocket message
-    )
+#     uvicorn.run(
+#         app,
+#         host="127.0.0.1",
+#         port=8000,
+#         log_level="info",
+#         ws_ping_interval=30,
+#         ws_ping_timeout=30,
+#         ws_max_size=16 * 1024 * 1024,  # 16MB max WebSocket message
+#     )
