@@ -266,7 +266,7 @@ export default function useTransfer(serverUrl) {
     setTransferStatus(TransferStatus.CONNECTING);
     setStatusMessage('Connecting...');
 
-    const wsUrl = serverUrl.replace('http', 'ws');
+    const wsUrl = serverUrl.replace('https', 'wss').replace('http', 'ws');
     const ws = new WebSocket(`${wsUrl}/ws/${room}/${userRole}`);
     ws.binaryType = 'arraybuffer';
 

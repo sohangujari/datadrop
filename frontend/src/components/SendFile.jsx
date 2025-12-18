@@ -191,7 +191,7 @@ export default function SendFile({ serverUrl, onTransferComplete, onError }) {
   // ─────────────────────────────────────────────────────────────────────────
   
   const connectWebSocket = useCallback((room) => {
-    const wsUrl = serverUrl.replace('http', 'ws');
+    const wsUrl = serverUrl.replace('https', 'wss').replace('http', 'ws');
     const ws = new WebSocket(`${wsUrl}/ws/${room}/sender`);
     
     ws.onopen = () => {

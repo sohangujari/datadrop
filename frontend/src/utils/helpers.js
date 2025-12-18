@@ -307,17 +307,23 @@ export const buildUrl = (base, params = {}) => {
 // Network Utilities
 // ============================================================================
 
+// NEW CODE
+export const BACKEND_URL = 'https://backend-datadrop.vercel.app';
+export const FRONTEND_URL = 'https://datadropz.netlify.app';
+
 export const getApiUrl = () => {
-  const hostname = window.location.hostname;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+  // For local development
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     return 'http://localhost:8000';
   }
-  return `http://${hostname}:8000`;
+  // For production
+  return BACKEND_URL;
 };
 
 export const getWebSocketUrl = (path = '') => {
   const apiUrl = getApiUrl();
-  return apiUrl.replace('http', 'ws') + path;
+  // Convert https to wss for secure WebSocket
+  return apiUrl.replace('https', 'wss').replace('http', 'ws') + path;
 };
 
 export const isLocalNetwork = (ip) => {

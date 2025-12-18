@@ -278,10 +278,9 @@ export default function ReceiveFile({ serverUrl, onTransferComplete, onError }) 
   // WebSocket Connection
   // ─────────────────────────────────────────────────────────────────────────
 
-  const connectWebSocket = useCallback(
-    (room) => {
-      const wsUrl = serverUrl.replace('http', 'ws');
-      const ws = new WebSocket(`${wsUrl}/ws/${room}/receiver`);
+  const connectWebSocket = useCallback((room) => {
+    const wsUrl = serverUrl.replace('https', 'wss').replace('http', 'ws');
+    const ws = new WebSocket(`${wsUrl}/ws/${room}/receiver`);
 
       // Set binary type for receiving chunks
       ws.binaryType = 'arraybuffer';
