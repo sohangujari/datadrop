@@ -308,7 +308,7 @@ export const buildUrl = (base, params = {}) => {
 // ============================================================================
 
 // NEW CODE
-export const BACKEND_URL = 'https://backend-datadrop.vercel.app';
+export const BACKEND_URL = 'https://datadrop.onrender.com';
 export const FRONTEND_URL = 'https://datadropz.netlify.app';
 
 export const getApiUrl = () => {
