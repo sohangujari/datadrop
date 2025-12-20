@@ -308,8 +308,8 @@ export const buildUrl = (base, params = {}) => {
 // ============================================================================
 
 // NEW CODE
-export const BACKEND_URL = 'https://datadrop.onrender.com';
-export const FRONTEND_URL = 'https://datadropz.netlify.app';
+export const BACKEND_URL = 'http://127.0.0.1:8000';
+export const FRONTEND_URL = 'http://localhost:5173';
 
 export const getApiUrl = () => {
   // For local development

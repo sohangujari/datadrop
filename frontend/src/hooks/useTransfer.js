@@ -23,6 +23,15 @@ export const ConnectionStatus = {
   ERROR: 'error',
 };
 
+// ✅ NEW: File Status for queue management
+export const FileStatus = {
+  PENDING: 'pending',
+  SENDING: 'sending',
+  RECEIVING: 'receiving',
+  COMPLETED: 'completed',
+  ERROR: 'error',
+};
+
 // Utility Functions
 const formatSize = (bytes) => {
   if (bytes === 0) return '0 B';
@@ -58,21 +67,25 @@ export default function useTransfer(serverUrl) {
 
   // Room State
   const [roomId, setRoomId] = useState('');
-  const [role, setRole] = useState(''); // 'sender' | 'receiver'
+  const [role, setRole] = useState('');
   const [peerConnected, setPeerConnected] = useState(false);
 
   // Transfer State
   const [transferStatus, setTransferStatus] = useState(TransferStatus.IDLE);
   const [statusMessage, setStatusMessage] = useState('');
 
-  // File Info
+  // File Info (current file)
   const [fileInfo, setFileInfo] = useState({
     name: '',
     size: 0,
     type: '',
   });
 
-  // Progress State
+  // ✅ NEW: File Queue State
+  const [fileQueue, setFileQueue] = useState([]);
+  const [currentFileIndex, setCurrentFileIndex] = useState(-1);
+
+  // Progress State (current file)
   const [progress, setProgress] = useState({
     percentage: 0,
     transferred: 0,
@@ -85,6 +98,15 @@ export default function useTransfer(serverUrl) {
     elapsed: '0s',
     averageSpeed: 0,
     averageSpeedFormatted: '0 B/s',
+  });
+
+  // ✅ NEW: Overall Progress State (for multiple files)
+  const [overallProgress, setOverallProgress] = useState({
+    completedFiles: 0,
+    totalFiles: 0,
+    completedBytes: 0,
+    totalBytes: 0,
+    percentage: 0,
   });
 
   // Refs
@@ -117,6 +139,8 @@ export default function useTransfer(serverUrl) {
     setStatusMessage('');
     setPeerConnected(false);
     setFileInfo({ name: '', size: 0, type: '' });
+    setFileQueue([]);
+    setCurrentFileIndex(-1);
     setProgress({
       percentage: 0,
       transferred: 0,
@@ -129,6 +153,13 @@ export default function useTransfer(serverUrl) {
       elapsed: '0s',
       averageSpeed: 0,
       averageSpeedFormatted: '0 B/s',
+    });
+    setOverallProgress({
+      completedFiles: 0,
+      totalFiles: 0,
+      completedBytes: 0,
+      totalBytes: 0,
+      percentage: 0,
     });
     chunksRef.current = [];
     fileRef.current = null;
@@ -193,9 +224,13 @@ export default function useTransfer(serverUrl) {
         break;
 
       case 'complete':
-        setTransferStatus(TransferStatus.COMPLETED);
-        setStatusMessage(`Transfer complete! Average: ${data.average_speed || progress.averageSpeedFormatted}`);
-        setProgress((prev) => ({ ...prev, percentage: 100 }));
+        // ✅ UPDATED: Handle completion for multi-file
+        if (role === 'receiver') {
+          setTransferStatus(TransferStatus.COMPLETED);
+          setStatusMessage(`Transfer complete! Average: ${data.average_speed || progress.averageSpeedFormatted}`);
+          setProgress((prev) => ({ ...prev, percentage: 100 }));
+        }
+        // For sender, completion is handled in sendFile/sendMultipleFiles
         break;
 
       case 'cancelled':
@@ -211,7 +246,7 @@ export default function useTransfer(serverUrl) {
       default:
         break;
     }
-  }, [transferStatus, progress.averageSpeedFormatted]);
+  }, [transferStatus, progress.averageSpeedFormatted, role]);
 
   // Update Progress
   const updateProgress = useCallback((data) => {
@@ -220,19 +255,15 @@ export default function useTransfer(serverUrl) {
     const transferred = data.transferred || 0;
     const total = data.total_size || fileInfo.size || 0;
 
-    // Calculate current speed
     const timeDiff = (now - lastProgressTimeRef.current) / 1000;
     const bytesDiff = transferred - lastBytesRef.current;
     const currentSpeed = timeDiff > 0 ? bytesDiff / timeDiff : 0;
 
-    // Calculate average speed
     const avgSpeed = elapsed > 0 ? transferred / elapsed : 0;
 
-    // Calculate ETA
     const remaining = total - transferred;
     const eta = avgSpeed > 0 ? remaining / avgSpeed : 0;
 
-    // Update refs for next calculation
     lastProgressTimeRef.current = now;
     lastBytesRef.current = transferred;
 
@@ -266,6 +297,7 @@ export default function useTransfer(serverUrl) {
     setTransferStatus(TransferStatus.CONNECTING);
     setStatusMessage('Connecting...');
 
+    // ✅ FIX: Handle both http->ws and https->wss conversion
     const wsUrl = serverUrl.replace('https', 'wss').replace('http', 'ws');
     const ws = new WebSocket(`${wsUrl}/ws/${room}/${userRole}`);
     ws.binaryType = 'arraybuffer';
@@ -356,7 +388,7 @@ export default function useTransfer(serverUrl) {
     return true;
   }, [connect]);
 
-  // Send File
+  // Send Single File
   const sendFile = useCallback(async (file) => {
     if (!file || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       return false;
@@ -403,42 +435,227 @@ export default function useTransfer(serverUrl) {
       size: file.size,
     }));
 
-    // Read and send chunks
-    const reader = new FileReader();
-    let offset = 0;
+    // ✅ Return a promise for sequential sending
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      let offset = 0;
 
-    const readNextChunk = () => {
-      if (transferCancelledRef.current) return;
-
-      const slice = file.slice(offset, offset + CHUNK_SIZE);
-      reader.readAsArrayBuffer(slice);
-    };
-
-    reader.onload = (e) => {
-      if (transferCancelledRef.current) return;
-
-      const chunk = e.target?.result;
-
-      if (chunk && wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(chunk);
-        offset += chunk.byteLength;
-
-        if (offset < file.size) {
-          requestAnimationFrame(readNextChunk);
-        } else {
-          wsRef.current.send(JSON.stringify({ type: 'complete' }));
+      const readNextChunk = () => {
+        if (transferCancelledRef.current) {
+          reject(new Error('Cancelled'));
+          return;
         }
-      }
-    };
 
-    reader.onerror = () => {
-      setTransferStatus(TransferStatus.ERROR);
-      setStatusMessage('Error reading file.');
-    };
+        const slice = file.slice(offset, offset + CHUNK_SIZE);
+        reader.readAsArrayBuffer(slice);
+      };
 
-    readNextChunk();
-    return true;
+      reader.onload = (e) => {
+        if (transferCancelledRef.current) {
+          reject(new Error('Cancelled'));
+          return;
+        }
+
+        const chunk = e.target?.result;
+
+        if (chunk && wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(chunk);
+          offset += chunk.byteLength;
+
+          if (offset < file.size) {
+            requestAnimationFrame(readNextChunk);
+          } else {
+            wsRef.current.send(JSON.stringify({ type: 'complete' }));
+            setTimeout(() => resolve(true), 100);
+          }
+        }
+      };
+
+      reader.onerror = () => {
+        setTransferStatus(TransferStatus.ERROR);
+        setStatusMessage('Error reading file.');
+        reject(new Error('Error reading file'));
+      };
+
+      readNextChunk();
+    });
   }, [peerConnected]);
+
+  // ✅ NEW: Send Multiple Files
+  const sendMultipleFiles = useCallback(async (files, onFileProgress) => {
+    if (!files || files.length === 0) return false;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return false;
+    if (!peerConnected) {
+      setStatusMessage('Wait for receiver to connect.');
+      return false;
+    }
+
+    transferCancelledRef.current = false;
+
+    const totalBytes = files.reduce((acc, f) => acc + f.size, 0);
+
+    // Initialize queue
+    const queue = files.map((file, index) => ({
+      id: `file-${index}-${Date.now()}`,
+      file,
+      status: FileStatus.PENDING,
+      progress: 0,
+    }));
+
+    setFileQueue(queue);
+    setOverallProgress({
+      completedFiles: 0,
+      totalFiles: files.length,
+      completedBytes: 0,
+      totalBytes,
+      percentage: 0,
+    });
+
+    setTransferStatus(TransferStatus.TRANSFERRING);
+
+    let completedCount = 0;
+    let completedBytes = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      if (transferCancelledRef.current) break;
+
+      const file = files[i];
+      setCurrentFileIndex(i);
+      setStatusMessage(`Sending ${i + 1}/${files.length}: ${file.name}`);
+
+      // Update queue status
+      setFileQueue((prev) =>
+        prev.map((item, idx) =>
+          idx === i ? { ...item, status: FileStatus.SENDING } : item
+        )
+      );
+
+      // Notify callback
+      onFileProgress?.(i, FileStatus.SENDING, 0);
+
+      try {
+        await sendSingleFileInternal(file, (progress) => {
+          // Update individual file progress
+          setFileQueue((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, progress } : item
+            )
+          );
+          onFileProgress?.(i, FileStatus.SENDING, progress);
+        });
+
+        // Mark as completed
+        completedCount++;
+        completedBytes += file.size;
+
+        setFileQueue((prev) =>
+          prev.map((item, idx) =>
+            idx === i ? { ...item, status: FileStatus.COMPLETED, progress: 100 } : item
+          )
+        );
+
+        setOverallProgress({
+          completedFiles: completedCount,
+          totalFiles: files.length,
+          completedBytes,
+          totalBytes,
+          percentage: (completedBytes / totalBytes) * 100,
+        });
+
+        onFileProgress?.(i, FileStatus.COMPLETED, 100);
+
+      } catch (error) {
+        if (error.message === 'Cancelled') break;
+
+        setFileQueue((prev) =>
+          prev.map((item, idx) =>
+            idx === i ? { ...item, status: FileStatus.ERROR } : item
+          )
+        );
+
+        onFileProgress?.(i, FileStatus.ERROR, 0);
+        console.error(`Error sending ${file.name}:`, error);
+      }
+    }
+
+    setCurrentFileIndex(-1);
+
+    if (!transferCancelledRef.current) {
+      setTransferStatus(TransferStatus.COMPLETED);
+      setStatusMessage(`All ${completedCount} file(s) sent successfully!`);
+      return true;
+    }
+
+    return false;
+  }, [peerConnected]);
+
+  // ✅ NEW: Internal function for sending single file with progress callback
+  const sendSingleFileInternal = useCallback((file, onProgress) => {
+    return new Promise((resolve, reject) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        reject(new Error('WebSocket not connected'));
+        return;
+      }
+
+      startTimeRef.current = Date.now();
+      lastProgressTimeRef.current = Date.now();
+      lastBytesRef.current = 0;
+
+      setFileInfo({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      });
+
+      // Send file info
+      wsRef.current.send(JSON.stringify({
+        type: 'file_info',
+        name: file.name,
+        size: file.size,
+      }));
+
+      const reader = new FileReader();
+      let offset = 0;
+
+      const readNextChunk = () => {
+        if (transferCancelledRef.current) {
+          reject(new Error('Cancelled'));
+          return;
+        }
+
+        const slice = file.slice(offset, offset + CHUNK_SIZE);
+        reader.readAsArrayBuffer(slice);
+      };
+
+      reader.onload = (e) => {
+        if (transferCancelledRef.current) {
+          reject(new Error('Cancelled'));
+          return;
+        }
+
+        const chunk = e.target?.result;
+
+        if (chunk && wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(chunk);
+          offset += chunk.byteLength;
+
+          const progress = (offset / file.size) * 100;
+          onProgress?.(progress);
+
+          if (offset < file.size) {
+            requestAnimationFrame(readNextChunk);
+          } else {
+            wsRef.current.send(JSON.stringify({ type: 'complete' }));
+            setTimeout(() => resolve(true), 100);
+          }
+        }
+      };
+
+      reader.onerror = () => reject(new Error('Error reading file'));
+
+      readNextChunk();
+    });
+  }, []);
 
   // Cancel Transfer
   const cancelTransfer = useCallback(() => {
@@ -505,16 +722,10 @@ export default function useTransfer(serverUrl) {
     };
   }, []);
 
-  // Check if ready to transfer
+  // Helpers
   const isReady = connectionStatus === ConnectionStatus.CONNECTED && peerConnected;
-
-  // Check if transferring
   const isTransferring = transferStatus === TransferStatus.TRANSFERRING;
-
-  // Check if completed
   const isCompleted = transferStatus === TransferStatus.COMPLETED;
-
-  // Check if error
   const isError = transferStatus === TransferStatus.ERROR;
 
   return {
@@ -540,8 +751,14 @@ export default function useTransfer(serverUrl) {
     fileInfo,
     progress,
 
+    // ✅ NEW: Multi-file support
+    fileQueue,
+    currentFileIndex,
+    overallProgress,
+
     // Actions
     sendFile,
+    sendMultipleFiles,  // ✅ NEW
     cancelTransfer,
     saveReceivedFile,
     getReceivedBlob,
